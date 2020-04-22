@@ -7,6 +7,7 @@ import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 
@@ -19,7 +20,6 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.Arrays;
 
 
 public class SetView extends View {
@@ -31,7 +31,8 @@ public class SetView extends View {
     TextView card_left;
     TextView point;
     ArrayList<CardView> cardsview = new ArrayList<>();
-    ArrayList<Card> findset = new ArrayList<Card>();
+    ArrayList<Card> findset = new ArrayList<>();
+    ArrayList<Card> extracards = new ArrayList<>();
 
     int chosenCard = 0;
     boolean init_field = false;
@@ -60,15 +61,35 @@ public class SetView extends View {
 
     public void deleteSetFromDesk() {
         ArrayList<CardView> deletefromDesk = new ArrayList<>();
+        ArrayList<Card> deleteCards = new ArrayList<>();
         for (int i = 0; i < findset.size(); i++) {
             for (int j = 0; j < cardsview.size(); j++) {
                 if (findset.get(i).count == cardsview.get(j).count && findset.get(i).fill == cardsview.get(j).fill &&
                         findset.get(i).shape == cardsview.get(j).shape && findset.get(i).color == cardsview.get(j).color) {
-                    deletefromDesk.add(cardsview.get(j));
+                    if (extracards.size() >= 3) {
+                        cardsview.get(j).count = extracards.get(i).count;
+                        cardsview.get(j).fill = extracards.get(i).fill;
+                        cardsview.get(j).shape = extracards.get(i).shape;
+                        cardsview.get(j).color = extracards.get(i).color;
+
+                        cards.get(j).count = extracards.get(i).count;
+                        cards.get(j).fill = extracards.get(i).fill;
+                        cards.get(j).shape = extracards.get(i).shape;
+                        cards.get(j).color = extracards.get(i).color;
+                    } else {
+                        deletefromDesk.add(cardsview.get(j));
+                        deleteCards.add(cards.get(j));
+                    }
                 }
             }
         }
-        cardsview.removeAll(deletefromDesk);
+
+        if (deletefromDesk.size() > 0) {
+            cardsview.removeAll(deletefromDesk);
+            cards.removeAll(deleteCards);
+        } else {
+            extracards.clear();
+        }
         findset.clear();
     }
 
@@ -177,11 +198,60 @@ public class SetView extends View {
             if (ans.status.equals("ok")) {
                 cards_left = ans.cards_left;
                 points = ans.points;
-                cards.removeAll(findset);
+//                cards.removeAll(findset);
+                Toast.makeText(getContext(),"player:"+player+", points: "+points+", cards_left:"+cards_left,Toast.LENGTH_LONG).show();
 
-                deleteSetFromDesk();
-                invalidate();
+                if (extracards.size() < 3) {
+                    try {
+                        Request req = new Request("fetch_cards", token);
+                        ReqGetExtraCards reg = new ReqGetExtraCards();
+                        reg.execute(req);
+                    } catch (Exception e) {
+                    }
+                } else {
+                    deleteSetFromDesk();
+                    invalidate();
+                }
             }
+        }
+    }
+
+    class ReqGetExtraCards extends AsyncTask<Request, Void, Response> {
+        @Override
+        protected Response doInBackground(Request... requests) {
+            Gson gson = new Gson();
+            String set_server_url = "http://194.176.114.21:8054";
+            HttpURLConnection urlConnection = null;
+            try {
+                URL url = new URL(set_server_url);
+                urlConnection = (HttpURLConnection) url.openConnection();
+
+                urlConnection.setDoOutput(true);
+                OutputStream out = urlConnection.getOutputStream();
+                out.write(gson.toJson(requests[0]).getBytes());
+
+                InputStream stream = urlConnection.getInputStream();
+                Response getcards = gson.fromJson(new InputStreamReader(stream), Response.class);
+                return getcards;
+            } catch (IOException e) {
+                return null;
+            } finally {
+                urlConnection.disconnect();
+            }
+        }
+
+        @Override
+        protected void onPostExecute(Response ans) {
+            super.onPostExecute(ans);
+            if (ans.status.equals("ok")) {
+                for (Card card: ans.cards) {
+                    if(!cards.contains(card)){
+                        extracards.add(card);
+                    }
+                }
+            }
+            deleteSetFromDesk();
+            invalidate();
         }
     }
 }
